@@ -23,9 +23,9 @@ namespace iFruitAddon2
         internal static bool Initialized { get => _initialized; }
 
         /// <summary>
-        /// Current contact index.
+        /// Current contact index (0-based relative index; the dynamic base offset is applied at draw time).
         /// </summary>
-        private static int _contactIndex = 40;
+        private static int _contactIndex = 0;
         public static int ContactIndex { get => _contactIndex; internal set => _contactIndex = value; }
 
         /// <summary>
@@ -40,11 +40,6 @@ namespace iFruitAddon2
         private static bool _isEnhanced = false;
         public static bool IsEnhanced { get => _isEnhanced; private set => _isEnhanced = value; }
 
-        /// <summary>
-        /// Config file handler.
-        /// </summary>
-        private readonly Config _config = new Config();
-
         public iFruitAddon2()
         {
 #if DEBUG
@@ -55,7 +50,6 @@ namespace iFruitAddon2
             Logger.Debug("Initialization...");
 
             CheckGameVersion();
-            ContactIndex = _config.GetContactStartIndex();
 
             Logger.Debug("Initialization successfully completed.");
             _initialized = true;
