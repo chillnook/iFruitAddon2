@@ -71,13 +71,14 @@ namespace iFruitAddon2
         /// Draw the contact in the phone interface.
         /// </summary>
         /// <param name="handle">The handle of the phone scaleform.</param>
-        internal void Draw(int handle)
+        /// <param name="baseOffset">The dynamic base offset (number of vanilla contacts) to add to this contact's relative index.</param>
+        internal void Draw(int handle, int baseOffset)
         {
             if (Index > -1)
             {
                 Function.Call(Hash.BEGIN_SCALEFORM_MOVIE_METHOD, handle, "SET_DATA_SLOT");
                 Function.Call(Hash.SCALEFORM_MOVIE_METHOD_ADD_PARAM_INT, 2);
-                Function.Call(Hash.SCALEFORM_MOVIE_METHOD_ADD_PARAM_INT, Index);
+                Function.Call(Hash.SCALEFORM_MOVIE_METHOD_ADD_PARAM_INT, baseOffset + Index);
                 Function.Call(Hash.SCALEFORM_MOVIE_METHOD_ADD_PARAM_INT, 0);
                 Function.Call(Hash.BEGIN_TEXT_COMMAND_SCALEFORM_STRING, "STRING");
                 Function.Call(Hash.ADD_TEXT_COMPONENT_SUBSTRING_PLAYER_NAME, Name);

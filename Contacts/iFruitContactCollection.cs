@@ -14,6 +14,12 @@ namespace iFruitAddon2
         private readonly int _appContactScriptHash;
 
         /// <summary>
+        /// Dynamic base offset: the number of vanilla (base-game) contacts detected via the
+        /// scaleform wrap-around trick.  -1 means "not yet calculated for this phone-open session".
+        /// </summary>
+        private int _baseContactOffset = -1;
+
+        /// <summary>
         /// Initializes a new instance of the <see cref="iFruitContactCollection"/> class.
         /// </summary>
         public iFruitContactCollection()
@@ -39,7 +45,14 @@ namespace iFruitAddon2
                 // Debug log all contacts indexes in the form: [0, 1, 2, ...]
                 Logger.Debug("Current contact indexes: [" + string.Join(", ", this.ConvertAll(c => c.Index)) + "]");
 
-
+                // Calculate the base contact offset once per contacts-list session using the
+                // scaleform wrap-around trick: cursor starts at 0, pressing UP wraps it to the
+                // last vanilla contact, so Selection + 1 equals the total vanilla contact count.
+                if (_baseContactOffset < 0)
+                {
+                    _baseContactOffset = CalculateBaseContactOffset(handle);
+                    Logger.Debug($"Dynamic base contact offset calculated: {_baseContactOffset}");
+                }
 
                 if (Game.IsControlPressed(Control.PhoneSelect))
                 {
@@ -51,19 +64,22 @@ namespace iFruitAddon2
             else
             {
                 _selectedIndex = -1;
+                // Reset the offset so it is recalculated the next time the contacts list opens.
+                _baseContactOffset = -1;
             }
 
             // Browsing every added contacts
+            bool offsetReady = _baseContactOffset >= 0;
             foreach (iFruitContact contact in this)
             {
                 contact.Update(); // Update sounds or Answer call when _callTimer has ended.
 
-                if (_shouldDraw)
+                if (_shouldDraw && offsetReady)
                 {
-                    contact.Draw(handle);
+                    contact.Draw(handle, _baseContactOffset);
                 }
 
-                if (_selectedIndex != -1 && _selectedIndex == contact.Index)
+                if (_selectedIndex != -1 && offsetReady && _selectedIndex == _baseContactOffset + contact.Index)
                 {
                     Logger.Debug("Contact has been selected for calling");
 
@@ -85,6 +101,53 @@ namespace iFruitAddon2
 
             }
             _shouldDraw = false;
+        }
+
+        /// <summary>
+        /// Use the scaleform wrap-around trick to determine how many vanilla contacts are in
+        /// the list.  When the cursor is at position 0, injecting a Phone-Up input event causes
+        /// the scaleform to wrap the cursor to the very last item.  Reading
+        /// <c>GET_CURRENT_SELECTION</c> at that point gives <c>lastIndex</c>, so
+        /// <c>lastIndex + 1</c> is the total vanilla contact count (= our base offset).
+        /// After reading, a Phone-Down event is injected to restore the cursor to position 0.
+        /// </summary>
+        /// <param name="handle">The handle of the phone scaleform.</param>
+        /// <returns>The number of vanilla contacts (i.e. the starting slot index for custom contacts),
+        /// or 0 if the offset could not be determined.</returns>
+        private int CalculateBaseContactOffset(int handle)
+        {
+            const int MaxAttempts = 5;
+
+            for (int attempt = 0; attempt < MaxAttempts; attempt++)
+            {
+                // Inject a Phone-Up (PHONE_NAV_UP_INPUT) event directly into the scaleform.
+                // Because the cursor starts at 0, the scaleform wraps it to the last item.
+                Function.Call(Hash.BEGIN_SCALEFORM_MOVIE_METHOD, handle, "SET_INPUT_EVENT");
+                Function.Call(Hash.SCALEFORM_MOVIE_METHOD_ADD_PARAM_INT, 8); // 8 = PHONE_NAV_UP_INPUT
+                Function.Call(Hash.END_SCALEFORM_MOVIE_METHOD);
+
+                // Wait one frame so the scaleform has time to process the navigation event.
+                Script.Wait(0);
+
+                // Read the current selection – should now be resting on the last vanilla contact.
+                int lastIndex = GetSelectedIndex(handle);
+                Logger.Debug($"Wrap-around attempt {attempt + 1}: lastIndex={lastIndex}");
+
+                if (lastIndex >= 0)
+                {
+                    // Inject a Phone-Down (PHONE_NAV_DOWN_INPUT) event to restore the cursor to 0.
+                    Function.Call(Hash.BEGIN_SCALEFORM_MOVIE_METHOD, handle, "SET_INPUT_EVENT");
+                    Function.Call(Hash.SCALEFORM_MOVIE_METHOD_ADD_PARAM_INT, 9); // 9 = PHONE_NAV_DOWN_INPUT
+                    Function.Call(Hash.END_SCALEFORM_MOVIE_METHOD);
+
+                    return lastIndex + 1;
+                }
+
+                Logger.Warning($"CalculateBaseContactOffset: attempt {attempt + 1} returned invalid index {lastIndex}, retrying...");
+            }
+
+            Logger.Warning("CalculateBaseContactOffset: failed to obtain a valid base offset after all attempts; defaulting to 0.");
+            return 0;
         }
 
         /// <summary>
